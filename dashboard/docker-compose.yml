@@ -1,0 +1,22 @@
+services:
+  dashboard:
+    build: .
+    container_name: crm-dashboard
+    restart: always
+    ports:
+      - "3001:3001"
+    volumes:
+      - openclaw-config:/openclaw-data:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/openclaw-data/workspace/mail-db.sqlite
+      - DB_WRITE_PATH=/openclaw-data/workspace/mail-db.sqlite
+      - ATTACHMENTS_PATH=/openclaw-data/workspace/mail-attachments
+      - OPENCLAW_CONTAINER=openclaw
+      - NAPOLEON_TIMEOUT_MS=180000
+
+volumes:
+  openclaw-config:
+    external: true
+    name: openclaw_openclaw-config
