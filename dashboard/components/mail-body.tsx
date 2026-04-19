@@ -1,12 +1,12 @@
 'use client'
 import * as React from 'react'
-import { Loader2, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
+import { Loader2, AlertTriangle, Eye, EyeOff } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 
 interface Props {
   uid: number
   subject?: string
-  /** Auto-load body on mount (default: true). If false, user clicks to expand. */
   autoLoad?: boolean
 }
 
@@ -14,6 +14,10 @@ interface Body {
   uid: number
   text: string | null
   html: string | null
+  text_raw: string | null
+  html_raw: string | null
+  text_clean: string | null
+  html_clean: string | null
   from_cache?: boolean
 }
 
@@ -21,7 +25,7 @@ export function MailBody({ uid, subject, autoLoad = true }: Props) {
   const [body, setBody] = React.useState<Body | null>(null)
   const [loading, setLoading] = React.useState(autoLoad)
   const [error, setError] = React.useState<string | null>(null)
-  const [showQuoted, setShowQuoted] = React.useState(false)
+  const [showRaw, setShowRaw] = React.useState(false)
 
   React.useEffect(() => {
     if (!autoLoad) return
@@ -45,25 +49,15 @@ export function MailBody({ uid, subject, autoLoad = true }: Props) {
     }
   }, [uid, autoLoad])
 
-  // Split quoted text (lines starting with ">") from the rest — show hidden behind a toggle
-  const { visible, quoted } = React.useMemo(() => {
-    if (!body?.text) return { visible: '', quoted: '' }
-    const lines = body.text.split('\n')
-    const out: string[] = []
-    const q: string[] = []
-    let inQuote = false
-    for (const l of lines) {
-      if (/^\s*>/.test(l) || /^(On |Il |Le |From |Da |Sent |Inviato )/.test(l.trim())) {
-        inQuote = true
-      }
-      if (inQuote) q.push(l)
-      else out.push(l)
-    }
-    return { visible: out.join('\n').trim(), quoted: q.join('\n').trim() }
-  }, [body?.text])
+  const cleanTxt = body?.text_clean ?? ''
+  const cleanHtm = body?.html_clean ?? ''
+  const autoFallback = (cleanTxt.trim().length < 30 && cleanHtm.trim().length < 30)
+  const effectiveShowRaw = showRaw || autoFallback
+  const renderHtml = effectiveShowRaw ? body?.html_raw : body?.html_clean
+  const renderText = effectiveShowRaw ? body?.text_raw : body?.text_clean
 
   const srcDoc = React.useMemo(() => {
-    if (!body?.html) return null
+    if (!renderHtml) return null
     const style = `<style>
       *{box-sizing:border-box;max-width:100%}
       body{font:14px/1.6 -apple-system,BlinkMacSystemFont,system-ui,Segoe UI,sans-serif;color:#e2e8f0;background:transparent;margin:0;padding:16px 20px;}
@@ -81,8 +75,8 @@ export function MailBody({ uid, subject, autoLoad = true }: Props) {
       ul,ol{margin:8px 0 12px 24px;padding:0}
       li{margin:4px 0}
     </style>`
-    return `<!doctype html><html><head>${style}<base target="_blank"></head><body>${body.html}</body></html>`
-  }, [body?.html])
+    return `<!doctype html><html><head>${style}<base target="_blank"></head><body>${renderHtml}</body></html>`
+  }, [renderHtml])
 
   const [iframeHeight, setIframeHeight] = React.useState(200)
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null)
@@ -95,55 +89,61 @@ export function MailBody({ uid, subject, autoLoad = true }: Props) {
     } catch {}
   }, [])
 
-  if (!autoLoad && !body && !loading) {
-    return (
-      <button
-        className="text-xs text-muted-foreground hover:text-foreground underline"
-        onClick={() => {
-          setLoading(true)
-          fetch(`/dashboard/api/mails/${uid}/body`)
-            .then((r) => r.json())
-            .then(setBody)
-            .catch((e) => setError(String(e)))
-            .finally(() => setLoading(false))
-        }}
-      >
-        Carica il contenuto
-      </button>
-    )
-  }
-
   if (loading) {
     return (
-      <div className="space-y-2 px-1 py-2">
+      <div className="space-y-2 px-3 py-3">
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-11/12" />
         <Skeleton className="h-4 w-4/5" />
-        <Skeleton className="h-4 w-10/12" />
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="flex items-start gap-2 text-sm text-rose-300 px-1 py-2">
+      <div className="flex items-start gap-2 text-sm text-rose-300 px-3 py-3">
         <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
         <span>Errore: {error}</span>
       </div>
     )
   }
 
-  if (!body || (!body.html && !body.text)) {
+  if (!body || (!renderHtml && !renderText)) {
+    // If clean version is empty but raw has content, offer to show raw
+    const rawHas = body && (body.html_raw || body.text_raw)
+    if (rawHas && !showRaw) {
+      return (
+        <div className="px-3 py-3 space-y-2 text-xs text-muted-foreground">
+          <div>Il corpo pulito è vuoto (probabilmente era solo un inoltro/firma).</div>
+          <Button variant="outline" size="sm" onClick={() => setShowRaw(true)}>
+            <Eye className="h-3 w-3 mr-1" /> Mostra corpo completo
+          </Button>
+        </div>
+      )
+    }
     return (
-      <div className="text-xs text-muted-foreground italic px-1 py-2">
-        Contenuto non ancora disponibile. Verrà scaricato nel prossimo ciclo scheduler.
+      <div className="text-xs text-muted-foreground italic px-3 py-3">
+        Contenuto non ancora disponibile.
       </div>
     )
   }
 
+  const toggle = (
+    <div className="flex items-center justify-end px-3 pt-2 pb-1 border-b border-border/30">
+      <Button variant="ghost" size="sm" onClick={() => setShowRaw((v) => !v)} className="text-xs">
+        {showRaw ? (
+          <><EyeOff className="h-3 w-3 mr-1" /> Nascondi inoltri/firme</>
+        ) : (
+          <><Eye className="h-3 w-3 mr-1" /> Mostra messaggio completo</>
+        )}
+      </Button>
+    </div>
+  )
+
   if (srcDoc) {
     return (
-      <div className="overflow-hidden rounded-md">
+      <div>
+        {toggle}
         <iframe
           ref={iframeRef}
           sandbox="allow-same-origin allow-popups"
@@ -158,22 +158,11 @@ export function MailBody({ uid, subject, autoLoad = true }: Props) {
   }
 
   return (
-    <div className="space-y-2 px-1">
-      <pre className="whitespace-pre-wrap text-sm text-foreground/95 font-sans leading-relaxed">{visible}</pre>
-      {quoted ? (
-        <div>
-          <button
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => setShowQuoted((v) => !v)}
-          >
-            {showQuoted ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            {showQuoted ? 'Nascondi testo citato' : 'Mostra testo citato'}
-          </button>
-          {showQuoted && (
-            <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground border-l-2 border-border pl-3">{quoted}</pre>
-          )}
-        </div>
-      ) : null}
+    <div>
+      {toggle}
+      <pre className="whitespace-pre-wrap text-sm text-foreground/95 font-sans leading-relaxed px-3 py-3">
+        {renderText}
+      </pre>
     </div>
   )
 }

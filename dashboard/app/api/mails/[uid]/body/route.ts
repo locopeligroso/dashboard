@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { getReadDb } from '@/lib/db'
-import { getWriteDb } from '@/lib/db'
+import { getReadDb, getWriteDb } from '@/lib/db'
+import { cleanMailText, cleanMailHtml } from '@/lib/mail-clean'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -12,7 +12,6 @@ const pexec = promisify(execFile)
 const OPENCLAW = process.env.OPENCLAW_CONTAINER ?? 'openclaw'
 
 async function fetchBodyFromImap(uid: number): Promise<{ text: string; html: string }> {
-  // Run a tiny Python inside openclaw container to fetch + parse body
   const script = `
 import sys, json, email, imaplib
 from html.parser import HTMLParser
@@ -45,7 +44,7 @@ html='\\n'.join(hp)
 if not text and html:
     h=H(); h.feed(html); text='\\n'.join(l for l in ''.join(h.buf).splitlines() if l.strip())
 print(json.dumps({'text':text,'html':html}))
-  `
+`
   const { stdout } = await pexec(
     'docker',
     ['exec', OPENCLAW, 'python3', '-c', script],
@@ -55,10 +54,12 @@ print(json.dumps({'text':text,'html':html}))
   return { text: parsed.text ?? '', html: parsed.html ?? '' }
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ uid: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ uid: string }> }) {
   const { uid } = await params
   const n = Number(uid)
   if (!Number.isFinite(n)) return NextResponse.json({ error: 'invalid uid' }, { status: 400 })
+  const url = new URL(req.url)
+  const wantRaw = url.searchParams.get('raw') === '1'
 
   const rdb = getReadDb()
   const row = rdb.prepare('SELECT uid, body_text, body_html FROM mails WHERE uid=?').get(n) as
@@ -66,22 +67,36 @@ export async function GET(_req: Request, { params }: { params: Promise<{ uid: st
     | undefined
   if (!row) return NextResponse.json({ error: 'mail not found' }, { status: 404 })
 
-  // Cache hit
-  if (row.body_text != null || row.body_html != null) {
-    return NextResponse.json({ uid: n, text: row.body_text ?? '', html: row.body_html ?? '', from_cache: true })
+  async function respond(text: string, html: string, fromCache: boolean) {
+    const textClean = cleanMailText(text)
+    const htmlClean = cleanMailHtml(html)
+    return NextResponse.json({
+      uid: n,
+      text: wantRaw ? text : textClean,
+      html: wantRaw ? html : htmlClean,
+      text_raw: text,
+      html_raw: html,
+      text_clean: textClean,
+      html_clean: htmlClean,
+      from_cache: fromCache,
+    })
   }
 
-  // Fetch + cache
+  if (row.body_text != null || row.body_html != null) {
+    return respond(row.body_text ?? '', row.body_html ?? '', true)
+  }
+
   try {
     const { text, html } = await fetchBodyFromImap(n)
     try {
       const wdb = getWriteDb()
-      wdb.prepare('UPDATE mails SET body_text=?, body_html=? WHERE uid=?')
-        .run(text.slice(0, 400_000), html.slice(0, 800_000), n)
-    } catch (e) {
-      // non-fatal: still return content
-    }
-    return NextResponse.json({ uid: n, text, html, from_cache: false })
+      wdb.prepare('UPDATE mails SET body_text=?, body_html=? WHERE uid=?').run(
+        text.slice(0, 400_000),
+        html.slice(0, 800_000),
+        n,
+      )
+    } catch {}
+    return respond(text, html, false)
   } catch (e: any) {
     return NextResponse.json({ error: String(e?.message ?? e) }, { status: 502 })
   }
