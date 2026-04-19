@@ -20,6 +20,7 @@ export async function POST(
       entity_label?: string
       client_domain?: string | null
       project_name?: string | null
+      context_data?: string | null
     }
     if (!body.message?.trim()) return NextResponse.json({ error: 'message required' }, { status: 400 })
 
@@ -27,18 +28,26 @@ export async function POST(
     const user = appendMessage(chat.id, 'user', body.message, 'ok')
     const pending = appendMessage(chat.id, 'napoleon', '', 'pending')
 
-    const context = buildContext({
+    const baseContext = buildContext({
       entity_type,
       entity_id,
       entity_label: body.entity_label,
       client_domain: body.client_domain ?? null,
       project_name: body.project_name ?? null,
     })
+    const context = body.context_data
+      ? `${baseContext}\n\n=== DATI DEL THREAD ===\n${body.context_data}`
+      : baseContext
 
     try {
       const reply = await askNapoleon(body.message, context)
       updateMessage(pending.id, { content: reply, status: 'ok' })
-      return NextResponse.json({ chat_thread_id: chat.id, user_message: user, napoleon_message_id: pending.id, content: reply })
+      return NextResponse.json({
+        chat_thread_id: chat.id,
+        user_message: user,
+        napoleon_message_id: pending.id,
+        content: reply,
+      })
     } catch (e: any) {
       const err = String(e?.message ?? e)
       updateMessage(pending.id, { status: 'error', error: err, content: `(errore: ${err})` })

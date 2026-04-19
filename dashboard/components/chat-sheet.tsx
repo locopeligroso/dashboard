@@ -20,6 +20,7 @@ interface ChatSheetProps {
   label?: string
   clientDomain?: string | null
   projectName?: string | null
+  contextData?: string
   triggerClass?: string
   triggerVariant?: 'outline' | 'ghost' | 'default' | 'secondary'
   triggerSize?: 'sm' | 'default' | 'icon'
@@ -35,10 +36,7 @@ export function ChatSheet(props: ChatSheetProps) {
 
   React.useEffect(() => {
     if (!open) return
-    fetch(
-      `/dashboard/api/chat/${props.entityType}/${encodeURIComponent(props.entityId)}`,
-      { cache: 'no-store' },
-    )
+    fetch(`/dashboard/api/chat/${props.entityType}/${encodeURIComponent(props.entityId)}`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((data) => setMessages(Array.isArray(data?.messages) ? data.messages : []))
       .catch(() => {})
@@ -55,19 +53,17 @@ export function ChatSheet(props: ChatSheetProps) {
       { id: Math.random(), chat_thread_id: 0, role: 'napoleon', content: 'Napoleone sta rispondendo…', status: 'pending', error: null, created_at: new Date().toISOString() } as ChatMessage,
     ])
     try {
-      const res = await fetch(
-        `/dashboard/api/chat/${props.entityType}/${encodeURIComponent(props.entityId)}/send`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            message: mine,
-            entity_label: props.label,
-            client_domain: props.clientDomain ?? null,
-            project_name: props.projectName ?? null,
-          }),
-        },
-      )
+      const res = await fetch(`/dashboard/api/chat/${props.entityType}/${encodeURIComponent(props.entityId)}/send`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          message: mine,
+          entity_label: props.label,
+          client_domain: props.clientDomain ?? null,
+          project_name: props.projectName ?? null,
+          context_data: props.contextData ?? null,
+        }),
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? 'errore')
       setMessages((m) => {
@@ -150,7 +146,7 @@ export function ChatSheet(props: ChatSheetProps) {
           <div className="space-y-3">
             {messages.length === 0 ? (
               <div className="text-xs text-muted-foreground p-4 text-center">
-                Nessun messaggio. Scrivi la prima richiesta a Napoleone sotto.
+                Napoleone può leggere il thread corrente (mittenti, date, oggetti, contenuto mail scaricate, task, allegati) quando fai domande. Scrivi sotto.
               </div>
             ) : (
               messages.map((m) => (
@@ -180,7 +176,7 @@ export function ChatSheet(props: ChatSheetProps) {
         <div className="space-y-2">
           <textarea
             className="w-full min-h-[100px] rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            placeholder="Scrivi a Napoleone..."
+            placeholder="Esempio: 'Riassumi questo thread in 3 punti' o 'Qual è la prossima azione da fare?'"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={busy}

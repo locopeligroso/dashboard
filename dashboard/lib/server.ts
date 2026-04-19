@@ -24,6 +24,7 @@ import type {
 } from './types'
 
 const DAYS_14 = "date('now', '-14 days')"
+const CUTOFF_DATE = process.env.CUTOFF_DATE ?? '2026-03-01'
 
 export function getKpi(): Kpi {
   const db = getReadDb()
@@ -260,12 +261,13 @@ export function listThreads(opts: {
   if (opts.projectId != null) { where.push('t.project_id = @project'); params.project = opts.projectId }
   params.limit = opts.limit ?? 200
   params.offset = opts.offset ?? 0
+  params.cutoff = CUTOFF_DATE
   const sql = `
     SELECT t.*, COALESCE(cc.category,'unknown') AS category, p.name AS project_name
     FROM threads t
     LEFT JOIN company_categories cc ON cc.domain=t.company_domain
     LEFT JOIN projects p ON p.id = t.project_id
-    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+    WHERE t.last_msg_date >= @cutoff ${where.length ? 'AND ' + where.join(' AND ') : ''}
     ORDER BY t.last_msg_date DESC
     LIMIT @limit OFFSET @offset
   `
@@ -335,6 +337,7 @@ export function listTodos(opts: {
     where.push("cc.category = 'client'")
   }
   params.limit = opts.limit ?? 500
+  params.cutoff = CUTOFF_DATE
   const sql = `
     SELECT tt.*, m.date as mail_date, m.subject as mail_subject,
            COALESCE(cc.category,'unknown') as category,
@@ -344,7 +347,7 @@ export function listTodos(opts: {
     LEFT JOIN threads t ON t.id = m.thread_id
     LEFT JOIN projects p ON p.id = t.project_id
     LEFT JOIN company_categories cc ON cc.domain=tt.client_domain
-    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+    WHERE m.date >= @cutoff ${where.length ? 'AND ' + where.join(' AND ') : ''}
     ORDER BY
       CASE WHEN tt.deadline IS NOT NULL AND tt.deadline <= date('now','+7 days') THEN 0 ELSE 1 END,
       m.date DESC
@@ -361,6 +364,7 @@ export function listAttachments(opts: { mime?: string; clientDomain?: string; li
   if (opts.mime) { where.push('a.mime LIKE @mime'); params.mime = `${opts.mime}%` }
   if (opts.clientDomain) { where.push('t.company_domain = @domain'); params.domain = opts.clientDomain }
   params.limit = opts.limit ?? 500
+  params.cutoff = CUTOFF_DATE
   const sql = `
     SELECT a.*, m.subject as mail_subject, m.date as mail_date, m.from_email,
            t.company_domain as client_domain, t.id as thread_id, t.project_id,
@@ -427,6 +431,7 @@ export function listLinks(opts: { domain?: string; search?: string; limit?: numb
     params.q = `%${opts.search}%`
   }
   params.limit = opts.limit ?? 200
+  params.cutoff = CUTOFF_DATE
   const sql = `
     SELECT l.*, m.subject as mail_subject, m.date as mail_date,
            t.company_domain as client_domain,
@@ -434,7 +439,7 @@ export function listLinks(opts: { domain?: string; search?: string; limit?: numb
     FROM links l JOIN mails m ON m.uid=l.mail_uid
     LEFT JOIN threads t ON t.id=m.thread_id
     LEFT JOIN company_categories cc ON cc.domain=t.company_domain
-    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+    WHERE m.date >= @cutoff ${where.length ? 'AND ' + where.join(' AND ') : ''}
     ORDER BY m.date DESC LIMIT @limit
   `
   return db.prepare(sql).all(params) as Link[]

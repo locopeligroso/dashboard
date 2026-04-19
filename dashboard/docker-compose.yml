@@ -15,6 +15,11 @@ services:
       - ATTACHMENTS_PATH=/openclaw-data/workspace/mail-attachments
       - OPENCLAW_CONTAINER=openclaw
       - NAPOLEON_TIMEOUT_MS=180000
+      - SMTP_HOST=out.postassl.it
+      - SMTP_PORT=465
+      - SMTP_USER=gg@verganiegasco.it
+      - SMTP_PASS=${SMTP_PASS}
+      - SMTP_FROM=Giuseppe Giunta <gg@verganiegasco.it>
 
 volumes:
   openclaw-config:

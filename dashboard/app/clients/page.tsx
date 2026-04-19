@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { listClients } from '@/lib/server'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { CategoryBadge } from '@/components/category-badge'
@@ -9,21 +9,29 @@ import { relativeItalian } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ category?: string; search?: string }> }) {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ category?: string; search?: string }>
+}) {
   const sp = await searchParams
+  // Default: show only "client" category; user can switch to "all" or another via filter.
+  const category = sp.category ?? 'client'
+  const rows = listClients({ category, search: sp.search })
 
-  const rows = listClients({ category: sp.category, search: sp.search })
   return (
     <div className="space-y-6">
       <header>
         <h1 className="text-3xl font-semibold tracking-tight">Clienti</h1>
-        <p className="text-sm text-muted-foreground">Domini categorizzati — clienti, fornitori, bandi, newsletter, interni</p>
+        <p className="text-sm text-muted-foreground">
+          Default: solo domini classificati <code className="text-xs">client</code>. Usa il filtro per vedere fornitori, bandi, newsletter, interni.
+        </p>
       </header>
 
       <Card>
         <CardHeader>
           <CardTitle>Elenco domini ({rows.length})</CardTitle>
-          <CardDescription>Categorizza i domini per filtrare task e conversazioni rilevanti</CardDescription>
+          <CardDescription>Categorizza i domini dal dettaglio cliente per migliorare i filtri automatici</CardDescription>
         </CardHeader>
         <CardContent>
           <ClientsFilter />
@@ -47,9 +55,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ c
                       <div className="text-xs text-muted-foreground">{c.domain}</div>
                     </Link>
                   </TableCell>
-                  <TableCell>
-                    <CategoryBadge category={c.category} />
-                  </TableCell>
+                  <TableCell><CategoryBadge category={c.category} /></TableCell>
                   <TableCell className="text-sm">{c.email_count}</TableCell>
                   <TableCell>
                     <Badge variant={c.open_threads > 0 ? 'emerald' : 'slate'}>{c.open_threads}</Badge>
