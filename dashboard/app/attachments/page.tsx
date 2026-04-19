@@ -11,33 +11,46 @@ export const dynamic = 'force-dynamic'
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ mime?: string; client?: string }>
+  searchParams: Promise<{ mime?: string; client?: string; showSig?: string }>
 }) {
   const sp = await searchParams
   const groups = attachmentsByThread({ mime: sp.mime, clientDomain: sp.client })
+  const showSig = sp.showSig === '1'
 
-  const total = groups.reduce((acc, g) => acc + g.attachments.length, 0)
+  const filtered = groups
+    .map((g) => ({ ...g, attachments: showSig ? g.attachments : g.attachments.filter((a: any) => a.is_inline !== 1) }))
+    .filter((g) => g.attachments.length > 0)
+
+  const total = filtered.reduce((acc, g) => acc + g.attachments.length, 0)
+  const hiddenSig = groups.reduce((acc, g) => acc + g.attachments.filter((a: any) => a.is_inline === 1).length, 0)
 
   return (
     <div className="space-y-6">
       <header>
         <h1 className="text-3xl font-semibold tracking-tight">Allegati</h1>
         <p className="text-sm text-muted-foreground">
-          File ricevuti via mail, divisi per thread. Clicca anteprima per aprire il file, Download per salvarlo.
+          File ricevuti via mail, divisi per thread. Anteprima + download. Firme immagine escluse di default.
         </p>
       </header>
 
-      <div className="text-xs text-muted-foreground">
-        {total} file in {groups.length} conversazioni
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <span>{total} file in {filtered.length} conversazioni</span>
+        {hiddenSig > 0 && !showSig ? (
+          <>
+            <span>·</span>
+            <Link href="?showSig=1" className="underline hover:text-foreground">Mostra anche {hiddenSig} firme escluse</Link>
+          </>
+        ) : null}
+        {showSig ? <Link href="/attachments" className="underline hover:text-foreground">Nascondi firme</Link> : null}
       </div>
 
       <div className="space-y-4">
-        {groups.length === 0 ? (
+        {filtered.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-sm text-muted-foreground">Nessun allegato.</CardContent>
           </Card>
         ) : (
-          groups.map((g) => (
+          filtered.map((g) => (
             <Card key={g.thread_id}>
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-3 flex-wrap">

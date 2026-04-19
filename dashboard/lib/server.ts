@@ -66,7 +66,7 @@ export function listClients(opts: { category?: string; search?: string } = {}): 
     params.category = opts.category
   }
   if (opts.search) {
-    clauses.push('(c.domain LIKE @q OR COALESCE(c.name,"") LIKE @q)')
+    clauses.push("(c.domain LIKE @q OR COALESCE(c.name,'') LIKE @q)")
     params.q = `%${opts.search}%`
   }
   const where = clauses.length ? 'WHERE ' + clauses.join(' AND ') : ''
@@ -423,7 +423,7 @@ export function listLinks(opts: { domain?: string; search?: string; limit?: numb
   const params: Record<string, any> = {}
   if (opts.domain) { where.push("l.url LIKE '%'||@domain||'%'"); params.domain = opts.domain }
   if (opts.search) {
-    where.push('(l.url LIKE @q OR COALESCE(l.context,"") LIKE @q OR COALESCE(m.subject,"") LIKE @q)')
+    where.push("(l.url LIKE @q OR COALESCE(l.context,'') LIKE @q OR COALESCE(m.subject,'') LIKE @q)")
     params.q = `%${opts.search}%`
   }
   params.limit = opts.limit ?? 200
